@@ -1,0 +1,71 @@
+FROM python:3.11-slim AS development
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+# build-essential for compiling Python packages (e.g., psycopg2-binary, numpy)
+# libpq-dev for PostgreSQL client libraries
+# curl and wget for health checks
+# git for cloning if needed (e.g., private repos for models)
+# libopenblas-dev and liblapack-dev for optimized numerical operations (numpy, scipy)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    wget \
+    git \
+    libopenblas-dev \
+    liblapack-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements.txt first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Download spaCy English model for clinical NLP
+# Using a small general-purpose model for development.
+# For production, a more specific clinical model might be needed.
+RUN python -m spacy download en_core_web_sm
+
+# Copy the rest of the source code
+COPY . .
+
+# Expose port for FastAPI
+EXPOSE 8000
+
+# Set up proper user permissions
+# Create a non-root user and group for security
+RUN groupadd --system --gid 1001 appgroup && \
+    useradd --system --uid 1001 --gid appgroup appuser && \
+    chown -R appuser:appgroup /app
+USER appuser
+
+# Health check for FastAPI service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Command to run the FastAPI application with Uvicorn in development mode (with reload)
+# Set environment variables for local development
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# Environment variables (can be overridden by docker-compose or Kubernetes)
+ENV ENVIRONMENT=development \
+    LOG_LEVEL=debug \
+    DATABASE_URL=postgresql://calaim_user:dev_password_only@postgres:5432/calaim \
+    REDIS_URL=redis://redis:6379 \
+    STORAGE_ENDPOINT=http://minio:9000 \
+    STORAGE_ACCESS_KEY=minio_admin \
+    STORAGE_SECRET_KEY=minio_password \
+    STORAGE_BUCKET_REFERRALS=referrals \
+    STORAGE_BUCKET_PDFS=pdfs \
+    PUBSUB_PROJECT_ID=calaim-local-dev \
+    PUBSUB_TOPIC=doc.jobs \
+    PUBSUB_SUBSCRIPTION=ai-service-sub \
+    SPACY_MODEL_PATH=/usr/local/lib/python3.11/site-packages/en_core_web_sm/en_core_web_sm-3.7.4 \
+    ENABLE_MOCK_API=true \
+    MOCK_HEALTHCARE_NL_API=true \
+    MOCK_DOCUMENT_AI=true \
+    CORS_ORIGINS=http://localhost:3000,http://localhost:8080
