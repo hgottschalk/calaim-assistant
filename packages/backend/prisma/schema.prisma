@@ -1,0 +1,443 @@
+// This is the Prisma schema for the CalAIM Assistant
+// Database provider configuration for PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for clinicians with authentication fields
+model User {
+  id                String         @id @default(uuid()) @db.Uuid
+  email             String         @unique
+  passwordHash      String?
+  firstName         String
+  lastName          String
+  title             String?
+  licenseNumber     String?
+  npi               String?        @unique // National Provider Identifier
+  phone             String?
+  isActive          Boolean        @default(true)
+  role              UserRole       @default(CLINICIAN)
+  organizationId    String         @db.Uuid
+  organization      Organization   @relation(fields: [organizationId], references: [id])
+  createdAssessments Assessment[]  @relation("AssessmentCreator")
+  updatedAssessments Assessment[]  @relation("AssessmentUpdater")
+  createdCarePlans  CarePlan[]     @relation("CarePlanCreator")
+  updatedCarePlans  CarePlan[]     @relation("CarePlanUpdater")
+  referrals         Referral[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  lastLoginAt       DateTime?
+  
+  @@index([organizationId])
+  @@index([email])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  CLINICIAN
+  SUPERVISOR
+  READONLY
+}
+
+// Organization model for provider groups
+model Organization {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  type          OrgType
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?
+  phone         String?
+  website       String?
+  npi           String?   // National Provider Identifier
+  taxId         String?
+  isActive      Boolean   @default(true)
+  users         User[]
+  patients      Patient[]
+  referrals     Referral[]
+  assessments   Assessment[]
+  carePlans     CarePlan[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([name])
+  @@map("organizations")
+}
+
+enum OrgType {
+  HOSPITAL
+  CLINIC
+  COMMUNITY_BASED_ORG
+  COUNTY_MENTAL_HEALTH
+  PRIVATE_PRACTICE
+  OTHER
+}
+
+// Patient model with demographic information
+model Patient {
+  id              String       @id @default(uuid()) @db.Uuid
+  externalId      String?      // ID from external system
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime
+  gender          Gender?
+  race            String?
+  ethnicity       String?
+  preferredLanguage String?
+  medicaidId      String?
+  medicareId      String?
+  ssn             String?      // Last 4 digits only for identification
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  phone           String?
+  email           String?
+  emergencyContact String?
+  emergencyPhone  String?
+  organizationId  String       @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  isActive        Boolean      @default(true)
+  referrals       Referral[]
+  assessments     Assessment[]
+  problems        Problem[]
+  carePlans       CarePlan[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([lastName, firstName])
+  @@index([dateOfBirth])
+  @@index([medicaidId])
+  @@map("patients")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  OTHER
+  UNKNOWN
+  DECLINED
+}
+
+// Referral model for uploaded documents
+model Referral {
+  id              String       @id @default(uuid()) @db.Uuid
+  patientId       String       @db.Uuid
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  userId          String       @db.Uuid
+  user            User         @relation(fields: [userId], references: [id])
+  organizationId  String       @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  referralDate    DateTime
+  referralSource  String?
+  referralReason  String?
+  urgency         ReferralUrgency @default(ROUTINE)
+  status          ReferralStatus @default(RECEIVED)
+  documentUrl     String        // GCS URL to the document
+  documentType    DocumentType
+  fileName        String
+  fileSize        Int
+  contentType     String
+  processingStatus ProcessingStatus @default(PENDING)
+  aiProcessingId  String?       // ID for tracking AI processing job
+  aiCompletedAt   DateTime?
+  aiConfidenceScore Float?
+  assessments     Assessment[]
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([patientId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([referralDate])
+  @@index([processingStatus])
+  @@map("referrals")
+}
+
+enum ReferralUrgency {
+  ROUTINE
+  URGENT
+  EMERGENCY
+}
+
+enum ReferralStatus {
+  RECEIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum DocumentType {
+  PDF
+  DOCX
+  DOC
+  RTF
+  TXT
+  IMAGE
+  OTHER
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  MANUAL_REVIEW
+}
+
+// Assessment model for the seven CalAIM domains
+model Assessment {
+  id              String       @id @default(uuid()) @db.Uuid
+  patientId       String       @db.Uuid
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  referralId      String?      @db.Uuid
+  referral        Referral?    @relation(fields: [referralId], references: [id])
+  creatorId       String       @db.Uuid
+  creator         User         @relation("AssessmentCreator", fields: [creatorId], references: [id])
+  updaterId       String       @db.Uuid
+  updater         User         @relation("AssessmentUpdater", fields: [updaterId], references: [id])
+  organizationId  String       @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  status          AssessmentStatus @default(DRAFT)
+  assessmentDate  DateTime
+  domains         AssessmentDomain[]
+  problems        Problem[]
+  carePlans       CarePlan[]
+  completedAt     DateTime?
+  signedAt        DateTime?
+  signedBy        String?      // Name of the clinician who signed
+  signature       String?      // Base64 encoded signature image
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([patientId])
+  @@index([referralId])
+  @@index([creatorId])
+  @@index([organizationId])
+  @@index([assessmentDate])
+  @@map("assessments")
+}
+
+enum AssessmentStatus {
+  DRAFT
+  COMPLETED
+  SIGNED
+  ARCHIVED
+}
+
+// AssessmentDomain model for each of the 7 domains
+model AssessmentDomain {
+  id              String       @id @default(uuid()) @db.Uuid
+  assessmentId    String       @db.Uuid
+  assessment      Assessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  domainType      DomainType
+  content         String       // JSON content for the domain
+  aiGenerated     Boolean      @default(false)
+  aiConfidence    Float?       // Confidence score from AI (0-1)
+  clinicianReviewed Boolean    @default(false)
+  clinicianModified Boolean    @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([assessmentId, domainType])
+  @@index([assessmentId])
+  @@index([domainType])
+  @@map("assessment_domains")
+}
+
+enum DomainType {
+  PRESENTING_PROBLEM
+  BEHAVIORAL_HEALTH_HISTORY
+  MEDICAL_HISTORY
+  SUBSTANCE_USE
+  RISK_ASSESSMENT
+  SOCIAL_DETERMINANTS
+  STRENGTHS
+}
+
+// Problem model with SNOMED/ICD coding
+model Problem {
+  id              String       @id @default(uuid()) @db.Uuid
+  patientId       String       @db.Uuid
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  assessmentId    String       @db.Uuid
+  assessment      Assessment   @relation(fields: [assessmentId], references: [id])
+  description     String
+  snomedCode      String?
+  snomedDisplay   String?
+  icd10Code       String?
+  icd10Display    String?
+  severity        ProblemSeverity @default(MODERATE)
+  status          ProblemStatus @default(ACTIVE)
+  onsetDate       DateTime?
+  identifiedDate  DateTime
+  resolvedDate    DateTime?
+  aiGenerated     Boolean      @default(false)
+  aiConfidence    Float?
+  carePlanItems   CarePlanItem[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([patientId])
+  @@index([assessmentId])
+  @@index([snomedCode])
+  @@index([icd10Code])
+  @@index([status])
+  @@map("problems")
+}
+
+enum ProblemSeverity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum ProblemStatus {
+  ACTIVE
+  RESOLVED
+  INACTIVE
+}
+
+// CarePlan model with goals and interventions
+model CarePlan {
+  id              String       @id @default(uuid()) @db.Uuid
+  patientId       String       @db.Uuid
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  assessmentId    String       @db.Uuid
+  assessment      Assessment   @relation(fields: [assessmentId], references: [id])
+  creatorId       String       @db.Uuid
+  creator         User         @relation("CarePlanCreator", fields: [creatorId], references: [id])
+  updaterId       String       @db.Uuid
+  updater         User         @relation("CarePlanUpdater", fields: [updaterId], references: [id])
+  organizationId  String       @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  status          CarePlanStatus @default(DRAFT)
+  startDate       DateTime
+  endDate         DateTime?
+  reviewDate      DateTime?
+  items           CarePlanItem[]
+  pdfUrl          String?      // GCS URL to generated PDF
+  completedAt     DateTime?
+  signedAt        DateTime?
+  signedBy        String?
+  signature       String?      // Base64 encoded signature image
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([patientId])
+  @@index([assessmentId])
+  @@index([creatorId])
+  @@index([organizationId])
+  @@index([startDate])
+  @@map("care_plans")
+}
+
+enum CarePlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  DISCONTINUED
+}
+
+// CarePlanItem model for goals and interventions
+model CarePlanItem {
+  id              String       @id @default(uuid()) @db.Uuid
+  carePlanId      String       @db.Uuid
+  carePlan        CarePlan     @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  problemId       String       @db.Uuid
+  problem         Problem      @relation(fields: [problemId], references: [id])
+  itemType        CarePlanItemType
+  description     String
+  targetDate      DateTime?
+  status          CarePlanItemStatus @default(NOT_STARTED)
+  progress        Int?         // Progress percentage (0-100)
+  frequency       String?
+  duration        String?
+  notes           String?
+  aiGenerated     Boolean      @default(false)
+  aiConfidence    Float?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([carePlanId])
+  @@index([problemId])
+  @@index([itemType])
+  @@index([status])
+  @@map("care_plan_items")
+}
+
+enum CarePlanItemType {
+  GOAL
+  INTERVENTION
+  OUTCOME
+}
+
+enum CarePlanItemStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  DISCONTINUED
+}
+
+// AuditLog model for compliance tracking
+model AuditLog {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @db.Uuid
+  user            User         @relation(fields: [userId], references: [id])
+  action          AuditAction
+  resourceType    ResourceType
+  resourceId      String
+  description     String
+  metadata        String?      // JSON metadata about the action
+  ipAddress       String?
+  userAgent       String?
+  timestamp       DateTime     @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  IMPORT
+  PRINT
+  SIGN
+  AI_PROCESS
+  AI_ACCEPT
+  AI_REJECT
+  AI_MODIFY
+}
+
+enum ResourceType {
+  USER
+  PATIENT
+  REFERRAL
+  ASSESSMENT
+  PROBLEM
+  CARE_PLAN
+  DOCUMENT
+  SYSTEM
+}

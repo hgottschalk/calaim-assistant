@@ -1,0 +1,253 @@
+version: '3.8'
+
+services:
+  # Database: PostgreSQL 15 with CalAIM schema
+  postgres:
+    image: postgres:15-alpine
+    container_name: calaim-postgres
+    environment:
+      POSTGRES_DB: calaim
+      POSTGRES_USER: calaim_user
+      POSTGRES_PASSWORD: dev_password_only
+      PGDATA: /data/postgres
+    volumes:
+      - postgres_data:/data/postgres
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calaim_user -d calaim"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - calaim-network
+
+  # MinIO: S3-compatible storage (emulates Google Cloud Storage)
+  minio:
+    image: minio/minio:RELEASE.2023-12-14T18-51-57Z
+    container_name: calaim-minio
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: minio_password
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - calaim-network
+
+  # MinIO setup: create buckets and policies
+  minio-setup:
+    image: minio/mc:RELEASE.2023-12-14T19-53-34Z
+    container_name: calaim-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set myminio http://minio:9000 minio_admin minio_password;
+      mc mb --ignore-existing myminio/referrals;
+      mc mb --ignore-existing myminio/pdfs;
+      mc mb --ignore-existing myminio/logs;
+      mc anonymous set download myminio/pdfs;
+      exit 0;
+      "
+    networks:
+      - calaim-network
+
+  # Pub/Sub emulator (emulates Google Cloud Pub/Sub)
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:latest
+    container_name: calaim-pubsub-emulator
+    entrypoint: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - calaim-network
+
+  # Redis (emulates Google Cloud Memorystore)
+  redis:
+    image: redis:7-alpine
+    container_name: calaim-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - calaim-network
+
+  # Frontend: Next.js application
+  frontend:
+    build:
+      context: ../packages/frontend
+      dockerfile: Dockerfile.dev
+    container_name: calaim-frontend
+    volumes:
+      - ../packages/frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_AUTH_DOMAIN=localhost
+      - NEXT_PUBLIC_AUTH_CLIENT_ID=calaim-local-client
+      - NEXT_PUBLIC_STORAGE_URL=http://localhost:9000
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - calaim-network
+
+  # Backend: NestJS API
+  backend:
+    build:
+      context: ../packages/backend
+      dockerfile: Dockerfile.dev
+    container_name: calaim-backend
+    volumes:
+      - ../packages/backend:/app
+      - backend_node_modules:/app/node_modules
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - DATABASE_URL=postgresql://calaim_user:dev_password_only@postgres:5432/calaim
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=minio_admin
+      - STORAGE_SECRET_KEY=minio_password
+      - STORAGE_BUCKET_REFERRALS=referrals
+      - STORAGE_BUCKET_PDFS=pdfs
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT_ID=calaim-local-dev
+      - AI_SERVICE_URL=http://ai-service:8000
+      - JWT_SECRET=local_dev_secret_only
+      - JWT_EXPIRES_IN=1d
+      - CORS_ORIGINS=http://localhost:3000
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    networks:
+      - calaim-network
+
+  # AI Service: FastAPI Python application
+  ai-service:
+    build:
+      context: ../packages/ai-service
+      dockerfile: Dockerfile.dev
+    container_name: calaim-ai-service
+    volumes:
+      - ../packages/ai-service:/app
+      - ai_service_venv:/app/.venv
+      - ai_service_models:/app/models
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+      - DATABASE_URL=postgresql://calaim_user:dev_password_only@postgres:5432/calaim
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=minio_admin
+      - STORAGE_SECRET_KEY=minio_password
+      - STORAGE_BUCKET_REFERRALS=referrals
+      - STORAGE_BUCKET_PDFS=pdfs
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - PUBSUB_PROJECT_ID=calaim-local-dev
+      - PUBSUB_TOPIC=doc.jobs
+      - PUBSUB_SUBSCRIPTION=ai-service-sub
+      - SPACY_MODEL_PATH=/app/models
+      - ENABLE_MOCK_API=true
+      - MOCK_HEALTHCARE_NL_API=true
+      - MOCK_DOCUMENT_AI=true
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    networks:
+      - calaim-network
+
+  # Local OAuth2 server for development
+  oauth2-mock:
+    image: ghcr.io/navikt/mock-oauth2-server:2.0.0
+    container_name: calaim-oauth2-mock
+    ports:
+      - "8090:8090"
+    environment:
+      - SERVER_PORT=8090
+      - JSON_CONFIG={"interactiveLogin":true,"httpServer":"NettyWrapper","tokenCallbacks":[],"loginPagePath":"/login","wellKnownUrl":"/oauth2/.well-known/openid-configuration"}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - calaim-network
+
+networks:
+  calaim-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  redis_data:
+  frontend_node_modules:
+  backend_node_modules:
+  ai_service_venv:
+  ai_service_models:

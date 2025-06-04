@@ -1,0 +1,75 @@
+{
+  "name": "calaim-assistant",
+  "version": "0.1.0",
+  "description": "AI-Powered CalAIM Domain & Care Plan Assistant - A cloud-native application for automating California's CalAIM SMHS documentation",
+  "private": true,
+  "workspaces": [
+    "packages/frontend",
+    "packages/backend",
+    "packages/ai-service"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter=@calaim/* run dev",
+    "build": "pnpm --filter=@calaim/* run build",
+    "test": "pnpm --filter=@calaim/* run test",
+    "lint": "pnpm --filter=@calaim/* run lint",
+    "format": "prettier --write \"**/*.{js,ts,tsx,json,md}\"",
+    "docker:up": "docker compose -f scripts/dev-compose.yaml up --build",
+    "docker:down": "docker compose -f scripts/dev-compose.yaml down",
+    "prepare": "husky install",
+    "postinstall": "pnpm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0 <19.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "keywords": [
+    "calaim",
+    "healthcare",
+    "medi-cal",
+    "behavioral-health",
+    "gcp",
+    "google-cloud",
+    "ai",
+    "nlp",
+    "document-ai",
+    "healthcare-nl-api",
+    "spacy",
+    "monorepo"
+  ],
+  "author": "FactoryAI",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/factoryai/calaim-assistant.git"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^18.4.3",
+    "@commitlint/config-conventional": "^18.4.3",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "lint-staged": {
+    "*.{js,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  }
+}
