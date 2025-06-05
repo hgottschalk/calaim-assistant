@@ -12,6 +12,10 @@ COPY package.json pnpm-lock.yaml* ./
 # Install dependencies
 RUN pnpm install
 
+# Explicitly sets where global binaries should be installed and ensures it's in the path
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="${PNPM_HOME}:${PATH}"
+
 # Install Prisma CLI globally
 RUN pnpm install -g prisma
 
