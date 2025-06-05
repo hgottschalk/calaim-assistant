@@ -1,170 +1,124 @@
 # MVP Status Report  
 AI-Powered CalAIM Domain & Care Plan Assistant  
-_Reporting Date: 04 June 2025_
+Reporting Date:  04 June 2025  
 
 ---
 
-## 1. Executive Summary  
-The project has moved from documentation to running code.  
-• Git repository initialized with monorepo structure (frontend, backend, ai-service).  
-• NestJS backend scaffolded with full JWT auth, role-based access control, Prisma schema and health endpoints.  
-• Core infrastructure services—Storage (GCS/MinIO), Pub/Sub, AI-Service client, Redis, PostgreSQL—are functional through Docker Compose.  
-• A comprehensive README, git-hooks, ESLint/Prettier, and commit-lint enforce quality from day one.  
-The codebase now compiles, spins up locally via `docker compose`, and exposes authenticated REST endpoints with Swagger docs.
+## 1  Accomplishments to Date  
+| Area | Outcome |
+|------|---------|
+| Repo & Monorepo | Git repo initialised, pushed to GitHub; pnpm workspaces (`backend`, `ai-service`, `frontend`)|
+| Infrastructure | PostgreSQL, Redis, MinIO containers running and networked via `calaim-network` |
+| Backend API | NestJS project scaffolded; JWT auth, RBAC guards, Prisma schema (≈60 tables); health endpoints |
+| AI Service | FastAPI micro-service skeleton with health check, mock entity extraction & domain mapping; Dockerfile |
+| Dev Tooling | ESLint/Prettier, Husky, commit-lint, Pino logging, Swagger/OpenAPI docs |
+| Dockerfiles | Backend & AI service `Dockerfile.dev` created; compose stack defined |
+| Docs | README, architecture design docs, development roadmap, and this status report |
 
 ---
 
-## 2. Project Architecture & Structure  
+## 2  Current Running Services  
+| Container | Image / Tag | Ports | Status |
+|-----------|-------------|-------|--------|
+| `calaim-postgres` | `postgres:15-alpine` | 5432 | Running (pg_isready ✅) |
+| `calaim-redis` | `redis:7-alpine` | 6379 | Running (PING PONG ✅) |
+| `calaim-minio` | `minio/minio:latest` | 9000 (API), 9001 (UI) | Running (`/minio/health/live` ✅) |
+| _Application services_ | backend / ai-service | 8080 / 8000 | Docker images buildable; not yet running in compose due to credential issue (see §3) |
 
+---
+
+## 3  Docker Credential Issue & Work-Around  
+**Root cause**  
+Docker Desktop expected credential helpers (`docker-credential-desktop`, `docker-credential-gcloud`) that were **missing** from `/Applications/Docker.app/Contents/Resources/bin/`.  
+**Symptoms** – `error getting credentials - exec: "docker-credential-desktop": executable file not found`.  
+
+**Work-around implemented**  
+1. Switched to **Docker Hub-only images** (avoided `gcr.io` & `ghcr.io`).  
+2. Started core infrastructure containers with `docker run …` (manual) instead of `docker compose`.  
+3. Plan to disable credential helpers in `~/.docker/config.json` or install missing binaries before re-enabling full compose stack (see Next Steps).  
+
+---
+
+## 4  Architecture Overview (Implemented Components)  
 ```
-/ (root)
-│─ README.md
-│─ package.json (pnpm workspaces)
-│─ scripts/dev-compose.yaml
-├─ packages
-│  ├─ frontend/        – Next.js SPA (stub)
-│  ├─ backend/         – NestJS API (running)
-│  └─ ai-service/      – FastAPI doc-pipeline (stub)
-├─ infrastructure/terraform/ (empty – placeholder)
-└─ docs/               – ADRs & design docs
+┌───────────┐     ┌──────────────┐
+│  Next.js  │◄──►│  NestJS API   │◄──► PostgreSQL
+│  (stub)   │    │   (backend)   │
+└───────────┘     │  Prisma ORM  │
+                  │  Redis Cache │
+                  │  Pub/Sub API │
+                  └────▲───▲─────┘
+                       │   │
+                       │   │REST / gRPC
+               ┌───────┘   └────────┐
+               │   FastAPI AI svc   │
+               │  (mock NLP/OCR)    │
+               └─────────▲──────────┘
+                         │
+                 MinIO (S3-compatible)
 ```
-
-Container topology for local dev:
-
-| Service          | Port | Image             |
-|------------------|------|-------------------|
-| Postgres 15      | 5432 | postgres:alpine   |
-| MinIO (GCS emu)  | 9000 | minio/minio       |
-| Pub/Sub Emulator | 8085 | gcloud SDK        |
-| Redis            | 6379 | redis:alpine      |
-| Backend API      | 8080 | `packages/backend`|
-| AI Service Stub  | 8000 | `packages/ai-service` |
-| Frontend (stub)  | 3000 | `packages/frontend` |
+_All services isolated on `calaim-network`; production target is Cloud Run + managed GCP services._
 
 ---
 
-## 3. Completed Features & Services  
-
-| Domain               | Status | Notes |
-|----------------------|--------|-------|
-| Git & Monorepo setup | ✅     | pnpm workspaces, commit hooks |
-| Docker Compose stack | ✅     | Postgres, MinIO, Pub/Sub, Redis, API, stubs |
-| Prisma DB schema     | ✅     | 60+ tables covering Users, Patients, Domains, Problems, CarePlans |
-| JWT Auth & RBAC      | ✅     | Passport strategy, guards & decorators |
-| Users API            | ✅     | CRUD w/ hashed passwords, validation |
-| Patients API         | ✅     | CRUD, search, org-scoped, validation |
-| Storage Service      | ✅     | Upload/Download, signed URLs, GCS & MinIO support |
-| Pub/Sub Service      | ✅     | Publish/Subscribe, emulator aware |
-| AI Service Client    | ✅     | Submit job, poll status, mock mode |
-| Health Endpoints     | ✅     | Liveness/readiness, DB/Redis/Storage/PubSub/AI |
-| Logging & Error filt | ✅     | Pino, request/response interceptor |
-| CI skeleton          | ⚠️     | commit-lint & lint-staged only (full Cloud Build pending) |
+## 5  What’s Working vs Pending  
+| Area | Working | Pending |
+|------|---------|---------|
+|Infrastructure containers | ✅ | Auto-create via compose once creds fixed |
+|Backend API skeleton (auth, health) | ✅ | Domain endpoints, PDF generation |
+|AI service mock pipeline | ✅ | Real Document AI + Healthcare NL API |
+|Prisma schema | ✅ | Migrations executed in container |
+|Storage uploads (SDK level) | ✅ | Virus-scan, signed-URL middleware |
+|Dockerfiles | ✅ | CI build in Cloud Build |
+|Frontend | Stub only | Full clinician UX |
+|Credential helpers | ⚠️ manual bypass | Permanent fix / disabled config |
+|CI/CD | Lint hooks | Cloud Build + Cloud Deploy pipeline |
+|IaC | Placeholder Terraform dir | VPC-SC, Cloud SQL, Cloud Run resources |
 
 ---
 
-## 4. Technology Stack Implemented  
-• TypeScript 5, NestJS 11 (Fastify)  
-• PostgreSQL 15 via Prisma ORM  
-• Google Cloud client libraries (Storage, Pub/Sub)  
-• MinIO & Pub/Sub emulator for local parity  
-• Docker Compose for dev orchestration  
-• Pino structured logging, Swagger (OpenAPI 3.1)  
-• pnpm workspaces, Husky, Commitlint, ESLint 8, Prettier 3  
+## 6  Next Steps to Complete MVP  
+1. **Credential Helper Fix**  
+   • Remove `"credsStore": "desktop"` & `"credHelpers"` from `~/.docker/config.json` _or_ install helpers.  
+2. **Enable Full `docker compose up`**  
+   • Build backend & AI images; verify health checks.  
+3. **Backend Features**  
+   • Implement Referrals → Assessments → Problem List → Care Plan endpoints.  
+   • Add PDF generation & file upload flow.  
+4. **AI Service Integration**  
+   • Wire Document AI OCR & Healthcare NL API; confidence aggregation; Pub/Sub listener.  
+5. **Frontend SPA**  
+   • Next.js pages for login, domain review, care-plan builder; connect to API.  
+6. **Prisma Migrations in Container**  
+   • Run `prisma migrate deploy` on backend container start.  
+7. **CI/CD & IaC**  
+   • Cloud Build: test → build → deploy.  
+   • Terraform: Cloud Run, Cloud SQL, GCS buckets, KMS.  
+8. **Security Hardening**  
+   • mTLS between services, CMEK rotation, pen-test fixes.  
 
 ---
 
-## 5. Development Environment Setup  
+## 7  How to Access & Test the Current System  
 
-1. _Clone & install_  
-   ```
-   git clone <repo>
-   cd calaim-assistant
-   pnpm install
-   ```  
-2. _Python env (for future ai-service)_  
-   ```
-   pyenv install 3.12.2
-   python -m venv .venv && source .venv/bin/activate
-   ```  
-3. _Start full stack_  
-   ```
-   docker compose -f scripts/dev-compose.yaml up --build
-   ```  
-4. _Access_  
-   • API Swagger: http://localhost:8080/api/docs  
-   • Next.js (stub): http://localhost:3000  
+| Action | Command / URL |
+|--------|---------------|
+|Start infrastructure (manual) | See §2 containers; or run helper script `scripts/local-infra.sh` |
+|MinIO Console | http://localhost:9001 (user `minio_admin`, pass `minio_password`) |
+|PostgreSQL | `psql -h localhost -U calaim_user -d calaim` |
+|Redis test | `redis-cli -h localhost ping` → `PONG` |
+|Run backend locally | `pnpm --filter=@calaim/backend dev` (requires Node 18+) |
+|Run AI service locally | From `packages/ai-service`: `uvicorn main:app --reload` (set env vars as in compose) |
+|API docs | Once backend running: http://localhost:8080/api/docs |
+|AI health check | `curl http://localhost:8000/health` |
+
+_When credential helpers are fixed, simply:_  
+```bash
+docker compose -f scripts/dev-compose.yaml up --build
+```  
+and visit the same URLs above (ports 8080 / 8000 / 9001).
 
 ---
 
-## 6. What’s Working vs What Needs Implementation  
-
-| Area                              | Working | Pending |
-|-----------------------------------|---------|---------|
-| Backend core framework            | ✅      | — |
-| Auth + RBAC                       | ✅      | MFA via Firebase auth |
-| Users & Patients CRUD             | ✅      | Pagination, soft-delete UI |
-| File upload & storage             | ✅      | Virus scan, content-type sniff |
-| Pub/Sub job dispatch              | ✅      | Dead-letter queues, retry config |
-| AI Service client (mock)          | ✅ (mock) | Real FastAPI microservice & GCP Document AI calls |
-| Seven-Domain Assessments          | ⚠️ stub | Domain models & controllers |
-| Problem List & Care Plans         | ⚠️ stub | SNOMED/ICD mapping rules, PDF gen |
-| Frontend clinician UI             | stub    | Full UX w/ forms & auth |
-| Terraform/IaC                     | —       | VPC-SC, Cloud SQL, Cloud Run, KMS |
-| CI/CD (Cloud Build/Deploy)        | —       | Build, scan, blue/green pipelines |
-| Automated tests                   | ⚠️ basic | ≥ 85 % coverage goal |
-
----
-
-## 7. Next Steps & Remaining Work  
-
-1. Finish domain modules: Referrals → Assessments → Problems → Care Plans.  
-2. Build AI micro-service (FastAPI) with Document AI OCR + Healthcare NL API orchestration.  
-3. Implement React/Next.js clinician interface, integrate auth + API.  
-4. Terraform baseline for GCP (VPC-SC, Cloud Run, Cloud SQL, GCS buckets).  
-5. CI pipeline: unit tests, docker build, Prisma migrate, tf-plan, deploy.  
-6. PDF generation for CalAIM care plans.  
-7. Active-learning feedback loop & F1 evaluation dashboards.  
-8. Security hardening: mTLS, CMEK rotation, pen-test fixes.  
-
----
-
-## 8. Timeline to MVP GA (6-month plan)
-
-| Month | Focus | Major Deliverables |
-|-------|-------|--------------------|
-| M1 (DONE) | Foundations | Repo, DevOps stack, Auth, DB schema |
-| M2 | Data Services | Referrals upload, AI job queue, AI micro-service POC |
-| M3 | Assessment UX Alpha | Seven-domain forms, AI suggestions, audit logs |
-| M4 | Care-Plan Builder | Goals/Interventions, PDF export, secured APIs |
-| M5 | Hardening & Mobile | WCAG, perf ≤ 400 ms, VPC-SC, pen-test |
-| M6 | Pilot & Launch | Cloud Deploy blue/green, pilot with 3 orgs |
-
----
-
-## 9. Local Development Cheat-Sheet  
-
-| Action | Command |
-|--------|---------|
-| Start stack | `docker compose -f scripts/dev-compose.yaml up --build` |
-| Stop stack  | `docker compose down` |
-| Run backend tests | `pnpm --filter=@calaim/backend run test` |
-| Prisma migrate | `pnpm --filter=@calaim/backend run prisma:migrate` |
-| Lint all code | `pnpm lint` |
-| Format code   | `pnpm format` |
-
----
-
-## 10. Key Achievements & Technical Decisions  
-
-1. **Serverless-first architecture** – Cloud Run targeted; Fastify for lower p99 latency.  
-2. **Full GCP parity in Docker Compose** – MinIO + Pub/Sub emulator enable offline dev.  
-3. **Security by Design** – JWT RBAC, helmet, compression, global validation & exception filters.  
-4. **Prisma Schema Complete** – Covers entire CalAIM data model (patients → care-plans).  
-5. **Extensible Health Framework** – Terminus + custom indicators expose granular readiness checks.  
-6. **AI Service Abstraction** – Mockable client enables frontend/UI progress before real NLP is wired.  
-7. **Monorepo & Tooling** – pnpm, Husky, ESLint/Prettier, commit-lint enforce consistency.  
-8. **Scalable Storage Layer** – Switches seamlessly between local MinIO and GCS CMEK buckets.  
-
----
-
-Project is on schedule with a solid backend foundation; remaining effort is concentrated on feature depth (assessment logic & AI) and cloud deployment automation.
+**Project remains on schedule once credential helper hurdle is cleared.**  
+With containers fully orchestrated, focus shifts to feature depth (assessment logic, AI integration) and deployment automation.  

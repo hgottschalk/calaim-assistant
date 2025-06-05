@@ -1,0 +1,29 @@
+## CalAIM Referral Document - Test Case
+
+**Patient Demographics:**
+*   **Name:** John Doe
+*   **DOB:** 1985-03-10
+*   **Gender:** Male
+*   **Medi-Cal ID:** CA123456789
+*   **Contact:** (555) 123-4567
+
+**Presenting Problems:**
+Mr. Doe presents with severe symptoms of major depressive disorder, including persistent low mood, anhedonia, and significant weight loss over the past 3 months. He also reports generalized anxiety, panic attacks, and intrusive thoughts related to past trauma. He expresses feelings of hopelessness and occasional passive suicidal ideation, denying any current plan or intent.
+
+**Mental Health History:**
+History of depression since adolescence, with one prior hospitalization in 2010 for a severe depressive episode. Has tried Sertraline and Fluoxetine in the past with limited success. Currently not on any psychiatric medications. Reports childhood trauma related to domestic violence.
+
+**Risk Factors:**
+*   Passive suicidal ideation (no plan/intent)
+*   History of trauma
+*   Unemployment (recently laid off)
+*   Limited social support
+
+**Substance Use History:**
+Reports daily alcohol use (approx. 6-8 beers/day) for the past 2 years, increasing since job loss. Denies use of illicit substances. Expresses a desire to reduce alcohol intake.
+
+**Social Circumstances:**
+Lives alone in a rented apartment. Recently lost his job as a construction worker. Has limited family contact and few friends. Expresses financial stress and difficulty affording groceries.
+
+**Treatment Recommendations:**
+Recommend immediate engagement in individual psychotherapy (CBT/trauma-informed). Consider psychiatric evaluation for medication management. Refer to substance use counseling and local employment services. Explore housing assistance programs.
