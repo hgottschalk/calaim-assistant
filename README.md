@@ -14,6 +14,8 @@ This repository contains the MVP implementation of the **AI-Powered CalAIM Domai
 * Generates CalAIM-compliant care plans (PDF)  
 * Runs entirely on Google Cloud Platform (HIPAA-eligible, serverless)
 
+
+
 ---
 
 ## 2  High-Level Architecture  
