@@ -1,40 +1,44 @@
+# Dockerfile.dev for backend NestJS service
+
+# Use official Node.js Alpine image as a base
 FROM node:18-alpine AS development
 
 # Set working directory
 WORKDIR /app
 
 # Install pnpm globally
-RUN npm install -g pnpm@latest
+RUN npm install -g pnpm
 
-# Copy package.json and pnpm-lock.yaml first for better caching
-COPY package.json pnpm-lock.yaml* ./
+# Copy package.json and pnpm-lock.yaml
+COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies
-RUN pnpm install
+# Install dependencies using pnpm
+# This leverages Docker's layer caching. Dependencies are only re-installed
+# if package.json or pnpm-lock.yaml change.
+RUN pnpm install --frozen-lockfile
 
-# Explicitly sets where global binaries should be installed and ensures it's in the path
-ENV PNPM_HOME="/root/.local/share/pnpm"
-ENV PATH="${PNPM_HOME}:${PATH}"
-
-# Install Prisma CLI globally
-RUN pnpm install -g prisma
-
-# Copy source code
+# Copy the rest of the application code
+# This includes Prisma schema, source files, etc.
+# Ensure entrypoint.sh and run-migrations.sh are copied if they are in the build context.
 COPY . .
 
-# Generate Prisma client
-RUN pnpm run prisma:generate
+# Explicitly copy migration script and entrypoint script to ensure they are present
+# and to allow for specific path references if needed.
+# Assumes run-migrations.sh is in prisma/migrations/ within the build context (packages/backend)
+# Assumes entrypoint.sh is in the root of the build context (packages/backend)
+COPY prisma/migrations/run-migrations.sh /app/prisma/migrations/run-migrations.sh
+COPY entrypoint.sh /app/entrypoint.sh
 
-# Expose API port
+# Make scripts executable
+RUN chmod +x /app/prisma/migrations/run-migrations.sh \
+    && chmod +x /app/entrypoint.sh
+
+# Expose the port the app runs on
 EXPOSE 8080
 
-# Set proper permissions for node user
-RUN chown -R node:node /app
-USER node
+# Set the entrypoint. This script will run migrations and then the CMD.
+ENTRYPOINT ["/app/entrypoint.sh"]
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/health || exit 1
-
-# Run app in development mode with hot reload (using nest start --watch via pnpm dev)
-CMD ["pnpm", "run", "dev"]
+# Default command to run the application in development mode
+# This will be passed as arguments to the entrypoint.sh script (e.g., exec "$@")
+CMD ["pnpm", "run", "start:dev"]

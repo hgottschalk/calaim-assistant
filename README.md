@@ -1,188 +1,148 @@
-# AI-Powered CalAIM Domain & Care Plan Assistant  
-*Minimum-Viable Product (MVP) – Google Cloud Platform Edition*
+# AI-Powered CalAIM Domain & Care Plan Assistant
+
+This repository implements an AI-powered assistant designed to streamline and automate documentation processes related to California's CalAIM (California Advancing and Innovating Medi-Cal) initiative, specifically for Specialty Mental Health Services (SMHS). This application aims to reduce the administrative burden on clinicians by leveraging AI and NLP technologies, pre-populating required assessment domains, managing problem lists, and generating CalAIM-compliant care plans.
+
+## Getting Started
+
+For detailed instructions on setting up your development environment, running the application, and contributing, please refer to the **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)**.
+
+This guide covers:
+*   Prerequisites and initial setup.
+*   Fixing common Docker credential issues.
+*   Running the application using Docker Compose.
+*   Implementing new features in the backend and AI service.
+*   Testing and troubleshooting.
+
+## Architectural Overview
+
+The codebase employs a microservices architecture, with separate components for the frontend, backend API, and AI/NLP processing. It leverages a monorepo structure managed by `pnpm` for streamlined development and dependency management across these components. Key architectural decisions include:
+
+-   **Serverless Deployment Target:** The application targets deployment on Google Cloud Platform (GCP) using serverless technologies like Cloud Run, minimizing operational overhead and enabling auto-scaling.
+-   **Event-Driven Architecture:** Asynchronous tasks, such as AI processing of documents, are handled using Cloud Pub/Sub (or a local mock), decoupling the backend API from long-running processes and improving responsiveness.
+-   **Microservices Pattern:** A modular microservices architecture is used with a separate AI pipeline for independent scaling and rapid iteration.
+-   **Infrastructure as Code (IaC):** Terraform is used to define and manage the infrastructure on GCP, ensuring repeatability, auditability, and version control.
+-   **API Gateway:** The backend utilizes NestJS for API functionality, potentially integrating Cloud Endpoints for API management and security.
+
+The core infrastructure services (PostgreSQL, Redis, MinIO) are containerized and managed via Docker Compose for local development.
+
+## Key Implemented Features (MVP)
+
+As of the latest MVP update, the following key features and components have been implemented:
+
+*   **Backend API (NestJS - `packages/backend`):**
+    *   Scaffolded NestJS project with JWT authentication and Role-Based Access Control (RBAC) guards.
+    *   Prisma schema defined (≈60 tables) for core data models (Users, Patients, Referrals, Assessments, Problems, Care Plans, etc.).
+    *   **Assessments Module:** Implemented `AssessmentsController` and `AssessmentsService` providing CRUD operations for assessments and their associated CalAIM domains.
+    *   Health check endpoints.
+    *   Initial setup for Pub/Sub integration.
+*   **AI Service (FastAPI - `packages/ai-service`):**
+    *   FastAPI microservice skeleton with health checks.
+    *   **Google Cloud Integration:**
+        *   Integration with Google Cloud Document AI for OCR from uploaded documents.
+        *   Integration with Google Cloud Healthcare Natural Language API for extracting clinical entities.
+        *   Asynchronous document processing pipeline triggered by a Pub/Sub listener.
+    *   Configurable mock/real GCP service usage for development.
+    *   Initial logic for mapping extracted entities to CalAIM domains and calculating confidence scores.
+*   **Infrastructure & Dockerization:**
+    *   PostgreSQL, Redis, and MinIO (S3-compatible) containers running and networked via `calaim-network`.
+    *   `Dockerfile.dev` for both backend and AI services.
+    *   **Docker Compose Stack (`scripts/dev-compose.yaml`):** Full application stack (excluding frontend initially) can be run locally.
+    *   **Automatic Database Migrations:** Prisma migrations are automatically applied when the backend container starts.
+    *   **Docker Credential Fix:** A script (`scripts/fix-docker-credentials.sh`) is provided to resolve common Docker credential helper issues on local machines.
+*   **Development Tooling & Documentation:**
+    *   ESLint/Prettier for code linting and formatting, Husky and commit-lint for Git hooks.
+    *   Pino for structured logging in the backend.
+    *   Swagger/OpenAPI documentation for backend and AI service APIs.
+    *   Comprehensive **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)**.
+    *   Architectural design documents and status reports.
+
+## Components and Modules
+
+The repository is structured as a monorepo, with the following key components located in the `packages/` directory:
+
+-   **`ai-service`:** This component houses the AI/NLP microservice, responsible for processing referral documents and extracting relevant information. It is implemented in Python using FastAPI and leverages Google Cloud Healthcare Natural Language API, Cloud Document AI, and potentially spaCy for clinical entity extraction and domain mapping.
+-   **`backend`:** This component implements the backend API using NestJS (TypeScript). It provides endpoints for user authentication, patient management, referral handling, assessment creation, and care plan generation. It interacts with the AI service via Pub/Sub and manages data persistence using Prisma ORM with a PostgreSQL database.
+-   **`frontend`:** (Stub only currently) This component will contain the clinician-facing user interface built with React (Next.js). It will allow users to upload referral documents, review AI-generated suggestions, manage problem lists, and create care plans.
+
+Other key directories and files include:
+
+-   **`scripts/`**: Contains scripts for development environment setup (e.g., `dev-compose.yaml`, `fix-docker-credentials.sh`), and database initialization/migration helpers.
+-   **`infrastructure/terraform/`**: Holds Terraform configuration files for deploying the application on GCP.
+-   **`docs/`**: Intended for Architectural Decision Records (ADRs) and other design documents.
+-   **`DEVELOPMENT_GUIDE.md`**: Comprehensive guide for developers.
+
+## High-Level Functionality
+
+The CalAIM Assistant aims to automate several key clinical workflows:
+
+1.  **Document Intake and Processing:** Clinicians upload referral documents. The backend API stores the document (MinIO locally, GCS in production) and publishes a message to a Pub/Sub topic.
+2.  **AI-Powered Extraction:** The AI service listens to the Pub/Sub topic, retrieves the document, and processes it using Document AI (for OCR) and Healthcare NL API (for entity extraction).
+3.  **Assessment Domain Population:** The AI service maps extracted entities to the seven required CalAIM assessment domains and suggests content with confidence scores. This data is then made available via the backend.
+4.  **Clinician Review & Finalization:** Clinicians review AI-generated suggestions in the frontend, make adjustments, and finalize assessments.
+5.  **Problem List Management:** The system manages a coded problem list using SNOMED CT and ICD-10 terminologies.
+6.  **Care Plan Generation:** The system facilitates the creation of CalAIM-compliant care plans.
+7.  **User Authentication and Authorization:** Secure user authentication and RBAC are implemented.
+
+## Data Flow and Interactions (Updated)
+
+1.  A clinician uploads a referral document through the frontend, which sends it to the backend API.
+2.  The backend API stores the document in MinIO (local dev) or Google Cloud Storage (production) and publishes a message to a Pub/Sub topic (e.g., `doc.jobs`).
+3.  The AI service, subscribed to the `doc.jobs` topic, receives the message.
+4.  The AI service retrieves the document from storage.
+5.  It processes the document using Google Document AI for text extraction (OCR).
+6.  The extracted text is then sent to Google Healthcare Natural Language API for clinical entity recognition (diagnoses, symptoms, medications, etc.).
+7.  The AI service maps these extracted entities to the seven CalAIM assessment domains, calculating confidence scores for each piece of information.
+8.  The structured data (assessment domain suggestions) is stored or sent back to the backend API (e.g., via a callback or by updating the database directly, TBD).
+9.  The clinician reviews the AI-generated suggestions in the frontend, makes any necessary adjustments, and finalizes the assessment and care plan.
+
+Key data models include:
+
+-   **Users:** Stores clinician information.
+-   **Patients:** Stores patient demographics and medical history.
+-   **Referrals:** Represents referral documents and their processing status.
+-   **Assessments:** Stores the structured data for the seven CalAIM assessment domains.
+-   **Problems:** Represents the coded problem list.
+-   **CarePlans:** Stores care plan details.
+
+The database schema is defined using Prisma ORM (`packages/backend/prisma/schema.prisma`).
+
+## Engineering Practices
+
+The codebase adheres to several key engineering practices:
+
+-   **TypeScript:** The backend and frontend are written in TypeScript.
+-   **Python:** The AI service is written in Python using FastAPI.
+-   **Linting and Formatting:** ESLint and Prettier (for TS/JS), and appropriate Python linters/formatters. Husky and commitlint for Git hooks.
+-   **Docker-Centric Development:** Core services are containerized for consistent local development and easier deployment.
+    *   `docker compose -f scripts/dev-compose.yaml up --build` starts the entire local stack.
+    *   Automatic database migrations via Prisma `migrate deploy` on backend container startup.
+    *   A utility script (`scripts/fix-docker-credentials.sh`) is provided to address common Docker credential helper issues.
+-   **Testing:** Unit and integration tests are used. Target coverage is 85%.
+-   **CI/CD:** Cloud Build and Cloud Deploy are targeted for automated building, testing, and deployment to GCP.
+-   **Logging:** Pino is used for structured logging in the backend; standard Python logging (e.g., Loguru) in the AI service.
+-   **Development Guidance:** A comprehensive `DEVELOPMENT_GUIDE.md` is maintained.
+
+## Dependencies and Integrations
+
+The project relies on several key dependencies and integrations:
+
+-   **Google Cloud Platform (GCP):** Cloud Run, Cloud SQL, Cloud Storage, Cloud Pub/Sub, Document AI, Healthcare Natural Language API.
+-   **Docker & Docker Compose:** For local development and containerization.
+-   **Prisma ORM:** For database access and schema management with PostgreSQL.
+-   **NestJS:** Node.js framework for the backend API.
+-   **FastAPI:** Python framework for the AI/NLP microservice.
+-   **Next.js:** React framework targeted for the frontend UI.
+-   **(Potentially) spaCy:** Python library for additional NLP tasks if needed.
+
+## How to Run and Test
+
+Please refer to the **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)** for detailed instructions on:
+*   Setting up your environment.
+*   Running the application using Docker Compose.
+*   Accessing service endpoints (Swagger, health checks).
+*   Connecting to the database and other services.
+*   Troubleshooting common issues.
 
 ---
 
-## 1  Project Overview  
-California Advancing and Innovating Medi-Cal (CalAIM) requires clinicians to complete a seven-domain assessment, maintain a coded problem list, and produce a compliant care plan.  
-This repository contains the MVP implementation of the **AI-Powered CalAIM Domain & Care Plan Assistant** (“the Assistant”). The Assistant:
-
-* Ingests clinician-supplied referral documents (PDF/DOCX)  
-* Uses Google Cloud Document AI + Healthcare Natural Language API with a custom spaCy pipeline to extract clinical entities  
-* Pre-populates the seven CalAIM SMHS assessment domains  
-* Manages a SNOMED-coded problem list and auto-maps to ICD-10  
-* Generates CalAIM-compliant care plans (PDF)  
-* Runs entirely on Google Cloud Platform (HIPAA-eligible, serverless)
-
-
-
----
-
-## 2  High-Level Architecture  
-
-| Layer | Service | Package |
-|-------|---------|---------|
-| Front-end SPA | React 19 + Next.js 15 on Cloud Run Jobs | `packages/frontend` |
-| Back-end API | NestJS 11 container on Cloud Run | `packages/backend` |
-| AI/NLP Micro-service | FastAPI 3.12 on Cloud Run | `packages/ai-service` |
-| Database | Cloud SQL (PostgreSQL 15) | managed |
-| Object Storage | Cloud Storage (CMEK, Object Versioning) | managed |
-| Messaging | Cloud Pub/Sub (`doc.jobs` topic) | managed |
-| IaC & CI/CD | Terraform, Cloud Build, Cloud Deploy | `infrastructure/terraform` |
-
----
-
-## 3  Prerequisites  
-
-| Tool | Minimum Version |
-|------|-----------------|
-| Node.js | 18 LTS |
-| npm / pnpm / yarn | latest compatible |
-| Python | 3.12 |
-| Docker | 24+ (with Buildx enabled) |
-| Google Cloud CLI | 470+ (`gcloud components update`) |
-| Terraform | 1.7+ |
-| Make (optional) | 4.3+ |
-
-A GCP project with billing enabled and a signed Google Cloud HIPAA BAA is required for production deployments.
-
----
-
-## 4  Quick Start (Local Development)  
-
-```bash
-# 1. Clone & bootstrap monorepo
-git clone git@github.com:<your-org>/calaim-assistant.git
-cd calaim-assistant
-git submodule update --init --recursive  # if applicable
-
-# 2. Install JS & Python deps
-pnpm install  # or yarn / npm
-pyenv install 3.12.2 && pyenv local 3.12.2
-python -m venv .venv && source .venv/bin/activate
-pip install -r packages/ai-service/requirements.dev.txt
-
-# 3. Spin up services with Docker Compose
-docker compose -f scripts/dev-compose.yaml up --build
-
-# 4. Visit the app
-open http://localhost:3000        # Next.js SPA
-open http://localhost:8080/docs   # FastAPI swagger
-```
-
-Local compose includes:
-* Postgres 15  
-* MinIO (S3-compatible) to emulate Cloud Storage  
-* Pub/Sub Lite emulator  
-* Dummy OAuth issuer for local auth
-
----
-
-## 5  Project Structure  
-
-```
-.
-├── packages/
-│   ├── frontend/          # Next.js clinician UI
-│   ├── backend/           # NestJS API & business logic
-│   └── ai-service/        # FastAPI doc-processing pipeline
-├── infrastructure/
-│   └── terraform/         # GCP resources (Cloud Run, SQL, GCS…)
-├── docs/                  # ADRs, design docs
-├── scripts/               # Dev & CI helpers (Makefile, compose)
-└── README.md
-```
-
-Monorepo managed via **pnpm workspaces** + **Poetry** (Python). Each package is independently containerised.
-
----
-
-## 6  Technology Stack  
-
-* **React 19 / Next.js 15** – SPA with Tailwind v4 & shadcn/ui  
-* **NestJS 11 (TypeScript)** – REST/GraphQL API, class-validator DTOs  
-* **FastAPI (Python 3.12)** – Async doc ingestion, Document AI / Healthcare NL orchestration  
-* **spaCy v3 + RoBERTa-clinical** – Custom clinical NER pipeline  
-* **PostgreSQL 15** – Cloud SQL, accessed via Prisma (TS) & SQLAlchemy (Py)  
-* **Google Cloud** – Cloud Run, Pub/Sub, Cloud Storage, Cloud Monitoring/Logging/Trace  
-* **Terraform** – Declarative IaC, Google provider  
-* **Cloud Build / Cloud Deploy** – CI/CD, blue-green rollout  
-* **Docker / Buildx** – Multi-stage, multi-arch images
-
----
-
-## 7  Development Guidelines  
-
-1. **Branching:** Conventional *git-flow lite* – `main` (prod), `dev` (integration), feature branches `feat/<ticket>`  
-2. **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`…) enforced via commit-lint  
-3. **Code Style:**  
-   * TS – ESLint + Prettier, strict mode, `noUncheckedIndexedAccess`  
-   * Python – ruff, black, mypy (strict)  
-4. **Testing:**  
-   * Front-end – Vitest + React-Testing-Library  
-   * Back-end – Jest + Supertest  
-   * AI – Pytest, spaCy scorer (≥ 85 % cov target)  
-5. **Secrets:** Never commit; use `docker-compose.override.yaml` or `secrets.dev.env`. For GCP, enable **Workload Identity Federation**.  
-6. **ADR:** Architectural decisions belong in `docs/adr-NNNN-*.md` (template provided).  
-7. **CI:** All PRs run unit & integration tests + docker build + tf-lint. Merge requires green pipeline.
-
----
-
-## 8  Deployment  
-
-1. **Bootstrap GCP**  
-   ```bash
-   cd infrastructure/terraform
-   terraform init
-   terraform apply
-   ```
-   Creates VPC-SC perimeter, Cloud Run services, Cloud SQL, GCS buckets, Pub/Sub topics, CMEK.
-
-2. **CI/CD**  
-   Cloud Build triggers on `main` and tags:
-   * Build & scan container images → Artifact Registry  
-   * Terraform plan + apply (guarded)  
-   * Cloud Deploy blue/green to `staging` → `prod`  
-
-3. **Configuration**  
-   Runtime config via **Cloud Run Service Variables** and Secret Manager; non-secret config in `config/*.yaml`.
-
----
-
-## 9  Contributing  
-
-1. Fork & clone the repo  
-2. Create a feature branch (`feat/<topic>`).  
-3. Follow code style & testing guidelines; run `make test`.  
-4. Submit a pull request referencing an open issue.  
-5. One approval + passing CI required to merge.  
-6. All contributors must sign the **Contributor License Agreement (CLA)**.
-
-Need help? Open a discussion or join the `#calaim-assistant` Slack channel.
-
----
-
-## 10  Security & Compliance (HIPAA)  
-
-| Control Area | Implementation |
-|--------------|----------------|
-| **Data at Rest** | CMEK encryption for Cloud SQL & Cloud Storage |
-| **Data in Transit** | TLS 1.3; mTLS between Cloud Run services |
-| **Network Isolation** | VPC Service Controls, Serverless VPC Access |
-| **Identity & Access** | Firebase Authentication (users); IAM Workload Identity (services) |
-| **Audit Logging** | Cloud Audit Logs exported to immutable BigQuery |
-| **PHI in Logs** | Log Router sink + Cloud DLP masking |
-| **Pen-Testing** | Quarterly; zero Critical/High CVEs gate |
-| **BAA** | Google Cloud HIPAA Business Associate Agreement executed |
-
-Clinical data never leaves the GCP perimeter. Contributors must not use production PHI in local environments—use de-identified samples.
-
----
-
-## License  
-Copyright © 2025 **FactoryAI**  
-Released under the Apache 2.0 license. See `LICENSE` for details.
-
----
-
-*Made with 💙 by the CalAIM Assistant team*
+This README provides a high-level overview. For more specific details, consult the documentation within individual packages and the `DEVELOPMENT_GUIDE.md`.
