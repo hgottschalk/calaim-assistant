@@ -97,7 +97,8 @@ settings = Settings()
 logger.remove()
 logger.add(
     os.sys.stderr,
-    level=settings.LOG_LEVEL,
+    # Ensure Loguru receives an uppercase level name (e.g., DEBUG, INFO)
+    level=settings.LOG_LEVEL.upper(),
     colorize=True,
     format="{level.icon} <green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 )

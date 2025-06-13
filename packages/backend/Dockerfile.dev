@@ -9,13 +9,17 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy package.json and pnpm-lock.yaml
-COPY package.json pnpm-lock.yaml ./
+# Configure pnpm to use a deterministic store directory inside the container
+RUN pnpm config set store-dir /app/.pnpm-store
+
+# Copy package.json
+# This is done separately to leverage Docker's layer caching.
+# Dependencies are only re-installed if package.json changes.
+COPY package.json ./
 
 # Install dependencies using pnpm
-# This leverages Docker's layer caching. Dependencies are only re-installed
-# if package.json or pnpm-lock.yaml change.
-RUN pnpm install --frozen-lockfile
+# Include dev dependencies since they are needed for migrations (prisma)
+RUN pnpm install --include=dev
 
 # Copy the rest of the application code
 # This includes Prisma schema, source files, etc.

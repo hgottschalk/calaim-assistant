@@ -110,49 +110,50 @@ services:
   #   networks:
   #     - calaim-network
 
+  # Backend service temporarily disabled due to pnpm store conflicts during container start-up
   # Backend: NestJS API
-  backend:
-    build:
-      context: ../packages/backend
-      dockerfile: Dockerfile.dev
-    container_name: calaim-backend
-    volumes:
-      - ../packages/backend:/app
-      - backend_node_modules:/app/node_modules
-    ports:
-      - "8080:8080"
-    environment:
-      - NODE_ENV=development
-      - PORT=8080
-      - DATABASE_URL=postgresql://calaim_user:dev_password_only@postgres:5432/calaim
-      - REDIS_URL=redis://redis:6379
-      - STORAGE_ENDPOINT=http://minio:9000
-      - STORAGE_ACCESS_KEY=minio_admin
-      - STORAGE_SECRET_KEY=minio_password
-      - STORAGE_BUCKET_REFERRALS=referrals
-      - STORAGE_BUCKET_PDFS=pdfs
-      # Pubsub emulator temporarily disabled
-      # - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
-      - PUBSUB_PROJECT_ID=calaim-local-dev
-      - AI_SERVICE_URL=http://ai-service:8000
-      - JWT_SECRET=local_dev_secret_only
-      - JWT_EXPIRES_IN=1d
-      - CORS_ORIGINS=http://localhost:3000
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
-      interval: 20s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio-setup:
-        condition: service_completed_successfully
-    networks:
-      - calaim-network
+  # backend:
+  #   build:
+  #     context: ../packages/backend
+  #     dockerfile: Dockerfile.dev
+  #   container_name: calaim-backend
+  #   volumes:
+  #     - ../packages/backend:/app
+  #     - backend_node_modules:/app/node_modules
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - NODE_ENV=development
+  #     - PORT=8080
+  #     - DATABASE_URL=postgresql://calaim_user:dev_password_only@postgres:5432/calaim
+  #     - REDIS_URL=redis://redis:6379
+  #     - STORAGE_ENDPOINT=http://minio:9000
+  #     - STORAGE_ACCESS_KEY=minio_admin
+  #     - STORAGE_SECRET_KEY=minio_password
+  #     - STORAGE_BUCKET_REFERRALS=referrals
+  #     - STORAGE_BUCKET_PDFS=pdfs
+  #     # Pubsub emulator temporarily disabled
+  #     # - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+  #     - PUBSUB_PROJECT_ID=calaim-local-dev
+  #     - AI_SERVICE_URL=http://ai-service:8000
+  #     - JWT_SECRET=local_dev_secret_only
+  #     - JWT_EXPIRES_IN=1d
+  #     - CORS_ORIGINS=http://localhost:3000
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
+  #     interval: 20s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     minio-setup:
+  #       condition: service_completed_successfully
+  #   networks:
+  #     - calaim-network
 
   # AI Service: FastAPI Python application
   ai-service:

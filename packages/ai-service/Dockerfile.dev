@@ -53,7 +53,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # Environment variables (can be overridden by docker-compose or Kubernetes)
 ENV ENVIRONMENT=development \
-    LOG_LEVEL=debug \
+    LOG_LEVEL=DEBUG \
     DATABASE_URL=postgresql://calaim_user:dev_password_only@postgres:5432/calaim \
     REDIS_URL=redis://redis:6379 \
     STORAGE_ENDPOINT=http://minio:9000 \

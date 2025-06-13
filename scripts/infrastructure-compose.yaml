@@ -1,0 +1,91 @@
+services:
+  # Database: PostgreSQL 15 with CalAIM schema
+  postgres:
+    image: postgres:15-alpine
+    container_name: calaim-postgres-infra
+    environment:
+      POSTGRES_DB: calaim
+      POSTGRES_USER: calaim_user
+      POSTGRES_PASSWORD: dev_password_only
+      PGDATA: /data/postgres
+    volumes:
+      - postgres_data:/data/postgres
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d # Assuming init-scripts are relative to dev-compose.yaml location
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calaim_user -d calaim"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - calaim-network
+
+  # MinIO: S3-compatible storage (emulates Google Cloud Storage)
+  minio:
+    image: minio/minio:latest
+    container_name: calaim-minio-infra
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: minio_password
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - calaim-network
+
+  # MinIO setup: create buckets and policies
+  minio-setup:
+    image: minio/mc:latest
+    container_name: calaim-minio-setup-infra
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set myminio http://minio:9000 minio_admin minio_password;
+      mc mb --ignore-existing myminio/referrals;
+      mc mb --ignore-existing myminio/pdfs;
+      mc mb --ignore-existing myminio/logs;
+      mc anonymous set download myminio/pdfs;
+      exit 0;
+      "
+    networks:
+      - calaim-network
+
+  # Redis (emulates Google Cloud Memorystore)
+  redis:
+    image: redis:7-alpine
+    container_name: calaim-redis-infra
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - calaim-network
+
+networks:
+  calaim-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  redis_data:

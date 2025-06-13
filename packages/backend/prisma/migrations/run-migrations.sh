@@ -5,8 +5,8 @@ set -e
 # This script is intended to be run on backend container startup.
 
 # Navigate to the root of the backend package.
-# This script is expected to be in 'packages/backend/prisma/migrations/'.
-# So, two levels up is 'packages/backend/'.
+# This script is expected to be in 'packages/backend/prisma/migrations/'
+# So, two levels up is 'packages/backend/'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 BACKEND_ROOT_DIR="$( cd "$SCRIPT_DIR/../.." &> /dev/null && pwd )"
 
@@ -41,10 +41,17 @@ done
 
 echo "Migration Script: Database is ready."
 
+# Ensure local Prisma CLI is available
+if [ ! -x "./node_modules/.bin/prisma" ]; then
+  echo "Migration Script: Local Prisma CLI not found. Installing project dependencies..."
+  # Install all dependencies (including dev) using pnpm for speed/caching
+  pnpm install --include=dev
+fi
+
 # Run Prisma migrations
 echo "Migration Script: Applying Prisma migrations..."
-# npx ensures we use the project's version of Prisma CLI
-if npx prisma migrate deploy; then
+# Use pnpm exec to invoke the Prisma CLI shipped with the project
+if pnpm exec prisma migrate deploy; then
   echo "Migration Script: Prisma migrations applied successfully."
 else
   echo "Migration Script: Prisma migrations failed." >&2
